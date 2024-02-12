@@ -1,0 +1,210 @@
+---
+title: "DeSeq2"
+author: "D T-S"
+date: "2/12/2024"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a short exercise to get you familiar with R studio and DESeq2. There is a lot more you can do with DESeq2 and R. Please do not limit yourself to what is shown in here. After working with this tutorial, explore the DESeq2 vignette to find other visualization and analysis methods available: 
+http://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html
+
+
+By the end of this section, you will have imported the packages tximport and DESeq2 into R and also imported the quantification files from Salmon into R and transformed them for DESeq2 to use.
+
+Step 1. Organizing data from Galaxy
+
+Much of bioinformatics analysis is preparing files to get them into the correct format for an analysis. This is very analogous to the molecular biology lab where you first have to make all the solutions/reagents before you can actually do the experiment. First, we need to organize the data on this server from galaxy).
+
+Each quant file from Salmon needs to be in its own folder on this server. I have pre-setup your file structure for you here.
+Review this file structure and make sure it looks as described below:
+
+First make a folder that will have a folder with each of the quant files in it. In the folder "nhr-234" (where this Rmarkdown is) click "New Folder" and name it “salmon_quant” (do not use spaces when naming your folders). Within this folder make 6 other folders for each samples name: wildtype_1, wildtype_2, wildtype_3, nhr-234(gk865)_1, nhr-234(gk865)_2, nhr-234(gk865)_3. 
+
+Download the salmon quant files from Galaxy using the floppy disk downloads button. Using the upload button, upload each salmon quant file to the appropriate directory (match the index on the file with the sample name). Once the quant file is in its sample-specific directory, all the files must have the same name. Rename each one to (make sure it is named EXACTLY this and nothing more!): “quant.sf” (this is the name and file structure Salmon would have given the files if Salmon had been run locally on your computer). 
+
+Step 2. Starting R, setting your working directory, and downloading the appropriate package 
+
+Anytime you use R and a package in R (such as we will be doing with DESeq2 and tximport) the first steps are to set up your R markdown, navigate to the correct working directory (place on the server), and install the necessary packages to use. 
+
+You working directory is the place on the server R is working from right now. When working in an 
+R notebook (like this) your working directory will be wherever this script is saved. Confirm 
+
+Install and load Tximport and DESeq2 from Bioconductor: 
+
+When loading packages in R there will be a lot of information printed on the screen in red. This does not mean that something is wrong! It is just the way R talks to you. 
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("tximport")
+BiocManager::install("DESeq2")
+```
+
+Load the DESeq2 package into R studio so you can use all the commands within it:
+
+```{r}
+library(DESeq2)
+library(tximport)
+
+```
+
+Step 3. Importing the Salmon quant tables and preparing for DESeq2
+
+3.1	Make the appropriate “sample table” in excel. 
+To read in the files appropriately, make a table that has all the metadata about your files. Be sure to save this file in the same directory (folder) that your R markdown/script is in and that you are currently working in R studio (so you will need to upload it as well). This file must be saved as a “csv” text file so that R can read it in. The format of the file should be:
+Column 1: sample (what you called each folder that the quant.sf tables are in). This must be typed EXACTLY how your folders are labeled (capitals, spaces, and all!).
+Column 2: condition (How was this dataset treated relative to the ones you are comparing it to? For example: mutant or wildtype)
+Column 3: replicate (the biological replicate number)
+
+Be sure that there is a header row for each of the columns. Also, the order of the rows must be in the same order that the files appear when looking at them in the files pane in R. Save this file as a “.csv” format. 
+
+As before, upload this csv file to your nhr-284 folder (where this Rmd is and salmon_quant folder are)
+
+3.2	Load the sample table into R
+R needs this sample table loaded as an object in R so that DESeq2 can read it 
+and find the appropriate count table to load. Change the name that you are saving the 
+sample table to and also change what is in green in quotes to whatever you named your excel file. 
+
+```{r}
+What_you_want_the_table_to_be_called_in_R <- read.csv("the_name_of_the_sample_table", header = TRUE) 
+```
+
+If the sample table loaded correctly, you will now see it in the environment pane of the upper right-hand corner of your R studio. If it did not take a look at the error and try to see what is going on. Most often, R cannot find the table – recheck your working directory and where you saved the sample table. Also check what the sample table is named and that was correctly entered in the quotations of the read.csv command. 
+
+3.3	Add the path to the sample table
+
+We want to add a column to the sample table so that we can tell R where exactly every Salmon quant file is located for the analysis. First, we make a vector (just a list of names) of each of the file paths:
+
+```{r}
+salmon_dirs <- file.path("salmon_quant", c("nhr-234(gk865)_1", "nhr-234(gk865)_2", "nhr-234(gk865)_3", "wildtype_1", "wildtype_2", "wildtype_3"), "quant.sf")
+salmon_dirs 
+```
+
+The second line should print out to the screen the vector you just created. Talk with your partners about what you think this command just did (the file.path())
+
+Next, add the path as a fourth column to your sample table:
+
+```{r}
+What_you_called_the_sample_table_in_R <- dplyr::mutate(What_you_called_the_sample_table_in_R, path = salmon_dirs)
+```
+
+From the environment pane, take a look and make sure that the column was added and that the paths line up with the correct sample name.
+
+3.4	Load a table that correlates transcript ID to gene name
+
+Salmon quantified the RNA-seq reads based on transcripts, but as for right now we are most interested in gene-level quantification (if you are interested in transcript level quantification that would be a great future analysis – talk with your partner what is the difference between genes vs transcripts?). Notice the file
+called "elegans_genes_transcripts.csv". This file will correlate transcripts to genes.
+Load this file into R and then look at the file to make sure it imported OK. There 
+should be one column of transcript ID and another of gene ID.
+
+```{r}
+What_you_to_call_this_gene_transcript_file <- read.csv("elegans_genes_transcripts.csv", header = TRUE)
+```
+
+3.5	Load the Salmon quant files into R
+Load all of the Salmon files into R using the vector of the sample paths you made previously. Peak into the resulting object to make sure it loaded correctly once in R.
+
+```{r}
+txi <- tximport(salmon_dirs, type = "salmon", tx2gene = what_you_called_gene_transcript_file_in_3.4)
+names(txi)
+head(txi$counts)
+length(txi$counts)
+```
+
+What is each row in this txi file? What is a column?
+
+```{r}
+ddsTxi <- DESeqDataSetFromTximport(txi, colData = what_called_sample_table_in_3.2, design = ~ condition)
+```
+
+The “design” (what is written after the tilde) tells DESeq2 what will be the important characteristic of feature that you will use for your differential expression comparisons later. This design must match EXACTLY what you called column 2 in your sample table. Was it lowercase or capitalized? If you get an error check to make sure these match. Why are we telling R that our important consideration is condition?
+
+Step 4. Exploring the data
+
+4.1 Normalize the data
+First step to comparing and looking at the datasets is to normalize the data. This is to account for the differences in number of sequencing reads in each of the samples. There are two normalization functions in DESeq2, vst (varaiance stabilizing transformation, shown here) and rlog (regularized log transformation, in the vignette link at the top of the page). Both use a linear model for normalization. You do not need to understand all the statistical theory behind the normalization, but if you are interested you can read the DESeq2 paper. 
+
+```{r}
+Name_for_normal_data_in_R <- vst(ddsTxi, blind = FALSE)
+```
+
+4.2 Visualize the datasets with PCA
+It is always good to look at your datasets in a PCA. This was you can ask the question – are the datasets clustering the way I expect them to? To start, read the excerpt on Moodle entitled “PCA explanation.” Talk thorugh with our lab partner – what is a PCA? Why do we use this analysis? Hypothesize with your partner about how you expect the datasets you are analyzing to cluster. Then compare this prediction with the PCA plot produced by the command below. The intgroup will tell R how to color the points so that you can tell all the datasets apart. What happens if you just do “condition” or just do “replicate”? What do these “condition” and “replicate” refer to?
+
+```{r}
+plotPCA(normalized_data_from_4.1, intgroup=c("condition", "replicate"))
+```
+
+Remember! "condition" must be exactly as how you wrote it in your sample table!
+
+Is the data clustering as you expect? If not, can you obviously tell how they are clustering? How might this influence your differential expression analysis? If you wanted to only color by condition, how would you modify the code above to do that?
+
+After you look at the PCA with vst, take a look with rlog – are there large differences? (these are pretty subtle differences so I would be surprised if there are big differences, but good to check).
+
+Step 5. Differential expression with DESeq2
+
+To answer your scientific question of interest, you will likely want to determine which genes are differentially expressed between two conditions of interest. Here we will go through the differential expression analysis and some analyses and visualization strategies.
+
+5.1 Calculate differential expression
+To calculate differential expression, call the “DESeq” command on your count tables read in to R in step 3.5.
+
+```{r}
+What_you_want_the_DESeq2_analysis_to_be_called <- DESeq(ddsTxi)
+```
+
+5.2 Create a table of the results and print out a summary of this table
+This is the step that actually calculated the differential expression between two different conditions! The “contrast” is how you want to compare. In this case we are comparing within the Condition header, from the initial sample table we set up in the beginning. The two elements in quotes after condition must correspond to however you initially set up the different conditions in the Sample Table. DESeq2 will look for the two different conditions, compare each gene in those two conditions and determine the log2foldchange and determine if this difference in expression is significant (assign a p-value). cond_1 and cond_2 are place holders. What should cond_1 and cond_2 be here? The first condition will be the numerator and the second condition
+will be the denominator.
+
+```{r}
+What_to_call_the_results_table <- results(DESeq_object_from_5.1, contrast = c("condition", "cond_1", "cond_2"))
+summary(What_you_called_the_results_table)
+
+```
+
+The summary command will provide a summary of how many genes show increase in expression (depending on what the comparison is) and how many genes show less expression. The adjusted p-value is a measure of significance, considering the variance at each gene across the biological replicates and correcting for multiple tests (If you do not know DESeq2 just performed about 20,000 significance tests!).
+
+5.3 Export the results to a tab-delimited table that can be read in excel
+
+The first step is to order the results so that it is more logical. A good way to order the results is by p-value:
+
+```{r}
+mutant_wt_res_ordered <- Name_of_results_from_5.2[order(Name_of_results_from_5.2$pvalue),]
+```
+
+Then, instead of writing out every gene (20,000 rows), only write out those that show a significant difference in expression between the conditions. Here we are being conservative and only taking those rows (genes) that have an adjusted p-value of less than .05. If you want to be more lenient, you could subset on just the pvalue:
+
+```{r}
+mutant_wt_res_sig <- subset(Name_of_ordered_results, padj < .05) 
+```
+
+Write these results to a table that can be read by other programs, such as excel.
+
+```{r}
+write.table(as.data.frame(Name_of_significant_results), file="what_to_call_the_new_file.txt", sep = "\t")
+```
+
+Download this table and take a look at the table in Excel. Start  Explore the genes that are significant. This will be a good way to get a set of genes for further analysis (such as GO term analysis or comparing between two differential expression analyses using venn diagrams). Also, you can take a look at the expression of these genes in the different datasets using IGV.
+
+5.4 Visualize the results in R
+
+It can be helpful to make a plot of every data point in your differential expression analysis:
+
+```{r}
+plotMA(results_object_from_step_5.2)
+```
+
+Once you make this plot, talk with your lab partners about what you think it is visualizing. What are the axes? What are the black dots? What are the red dots? What are the red triangles?
+
+You may have some genes of interest that you want to take a look at (maybe the most significant genes that you were looking at in excel or maybe your favorite gene). Here you can see the normalized log counts for that gene across conditions and replicates. What is the y-axis on this graph? What happens to the graph if you change intgroup to “replicate”? Remember "name of gene" is a placeholder and should be changed to the
+name of a gene in the C. elegans genome. For example, look in your excel file of the 
+differential expression results and put in the gene name that shows the largest differential
+expression.
+
+```{r}
+plotCounts(dds = name_of_deseq2_object_from_step_3.5, gene = "name of gene", intgroup = c("condition"))
+```
+
